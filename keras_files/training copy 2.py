@@ -1,5 +1,5 @@
 import csv
-from classes import fasttext_lowercase_train_config, TextPreprocessor
+from preprocessing.textPreprocessor import fasttext_lowercase_train_config, TextPreprocessor
 from tags2 import get_tags
 from sklearn.model_selection import train_test_split
 import autokeras as ak

@@ -1,5 +1,5 @@
 import csv
-from classes import fasttext_lowercase_train_config, TextPreprocessor
+from preprocessing.textPreprocessor import fasttext_lowercase_train_config, TextPreprocessor
 from tags import get_tags
 from joblib import dump
 from razdel import sentenize, tokenize

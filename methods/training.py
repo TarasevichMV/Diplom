@@ -1,5 +1,5 @@
 import csv
-from classes import fasttext_lowercase_train_config, TextPreprocessor
+from preprocessing.textPreprocessor import fasttext_lowercase_train_config, TextPreprocessor
 from gensim.models import FastText
 import multiprocessing as mpr
 import os

@@ -1,0 +1,11 @@
+greenlet==3.0.3
+pyaes==1.6.1
+pyasn1==0.5.1
+Pyrogram==2.0.106
+PySocks==1.7.1
+python-dotenv==1.0.1
+pytz==2024.1
+rsa==4.9
+SQLAlchemy==2.0.25
+Telethon==1.33.1
+typing_extensions==4.9.0
