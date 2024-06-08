@@ -6,10 +6,7 @@ from sklearn.metrics import classification_report, confusion_matrix, ConfusionMa
 from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
 import tensorflow as tf
-from transformers import TFBertModel, BertTokenizer
-from tensorflow.keras.layers import Input, Dense, Dropout
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
+import autokeras as ak
 import sys
 
 # Добавление пути к проекту
@@ -56,51 +53,22 @@ labels = np.array(labels)
 # Разделение данных на тренировочную и тестовую выборки
 train_texts, test_texts, train_labels, test_labels = train_test_split(texts, labels, test_size=0.2, random_state=42)
 
-# Загрузка BERT токенизатора и модели
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-bert_model = TFBertModel.from_pretrained('bert-base-uncased')
-
-# Функция токенизации
-def tokenize_texts(texts):
-    return tokenizer(texts.tolist(), padding=True, truncation=True, return_tensors='tf')
-
-train_encodings = tokenize_texts(train_texts)
-test_encodings = tokenize_texts(test_texts)
-
-# Определение модели
-input_ids = Input(shape=(train_encodings['input_ids'].shape[1],), dtype=tf.int32, name='input_ids')
-attention_mask = Input(shape=(train_encodings['attention_mask'].shape[1],), dtype=tf.int32, name='attention_mask')
-bert_output = bert_model([input_ids, attention_mask])[1]
-dropout = Dropout(0.3)(bert_output)
-output = Dense(labels.shape[1], activation='sigmoid')(dropout)
-
-model = Model(inputs=[input_ids, attention_mask], outputs=output)
-
-# Компиляция модели
-optimizer = Adam(learning_rate=2e-5)
-model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
-
-# Вычисление весов классов
-class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(labels.argmax(axis=1)), y=labels.argmax(axis=1))
-class_weights = {i: class_weights[i] for i in range(len(class_weights))}
+# Создание модели с помощью AutoKeras
+clf = ak.TextClassifier(overwrite=True, max_trials=1)
 
 # Обучение модели
-history = model.fit(
-    [train_encodings['input_ids'], train_encodings['attention_mask']],
-    train_labels,
-    validation_data=([test_encodings['input_ids'], test_encodings['attention_mask']], test_labels),
-    epochs=3,  # BERT требует меньше эпох для обучения
-    batch_size=16,
-    class_weight=class_weights
-)
+history = clf.fit(train_texts, train_labels, epochs=20, validation_data=(test_texts, test_labels))
 
 # Оценка модели на тестовой выборке
-evaluation = model.evaluate([test_encodings['input_ids'], test_encodings['attention_mask']], test_labels)
+evaluation = clf.evaluate(test_texts, test_labels)
 print(f"Test Accuracy: {evaluation[1]}")
 print(f"Test Loss: {evaluation[0]}")
 
 # Прогнозирование меток на тестовых данных
-predicted_labels = model.predict([test_encodings['input_ids'], test_encodings['attention_mask']])
+predicted_labels = clf.predict(test_texts)
+
+# Преобразование предсказанных меток в формат numpy
+predicted_labels = np.array(predicted_labels).squeeze()
 
 # Вычисление метрик
 columns = ["Инвестиции", "Производство", "Операционка", "Новые рынки/сегменты",

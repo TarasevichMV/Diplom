@@ -1,4 +1,3 @@
-# Импорт необходимых библиотек
 import pandas as pd
 from catboost import Pool, CatBoostClassifier
 from sklearn.model_selection import train_test_split
