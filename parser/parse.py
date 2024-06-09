@@ -1,9 +1,7 @@
 from telethon import TelegramClient
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import declarative_base
+import sqlite3
 from pytz import timezone
 import time
 
@@ -16,37 +14,40 @@ phone = os.environ.get('phone')
 utc = timezone('Europe/Moscow')
 timezone = timezone('Europe/Moscow')
 
-
 # Настройки базы данных
-engine = create_engine('sqlite:///../mydatabase.db')
-Base = declarative_base()
-
-
-class Message(Base):
-    __tablename__ = 'messages'
-    id = Column(Integer, primary_key=True)
-    message_id = Column(Integer)
-    message_date = Column(DateTime)
-    message_text = Column(String)
-    channel_username = Column(String)
-
-
-# Создание таблицы, если она еще не существует
-Base.metadata.create_all(engine)
-
-# Настройки сессии для ORM
-Session = sessionmaker(bind=engine)
+db_path = 'mydatabase.db'
 
 # Подключение к Telegram
 client = TelegramClient('session.session', api_id, api_hash, system_version="4.16.30-vxvadUSTOM")
 client.start()
 
-# Получение списка существующих сообщений
-with Session() as session:
-    existing_messages = session.query(Message.channel_username, Message.message_id).all()
+existing_messages = []
 
-# Преобразуем список существующих сообщений в набор для быстрого поиска
-existing_messages_set = {(msg.channel_username, msg.message_id) for msg in existing_messages}
+# Подключение к базе данных
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+
+# Создание таблицы, если она еще не существует
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id INTEGER,
+        message_date TEXT,
+        message_text TEXT,
+        channel_username TEXT
+    )
+''')
+conn.commit()
+
+# Получение существующих сообщений
+query = "SELECT channel_username, message_id FROM messages"
+cursor.execute(query)
+rows = cursor.fetchall()
+for row in rows:
+    existing_messages.append((row[0], row[1]))
+
+# Закрытие подключения к базе данных
+conn.close()
 
 # Список каналов для парсинга
 companies_channels = [
@@ -64,19 +65,22 @@ for channel in companies_channels:
     print(f'Начат парсинг канала: {channel}')
     for message in client.iter_messages(channel):
         message_date = message.date.astimezone(timezone)
-        if (channel, message.id) not in existing_messages_set and message.text:
-            with Session() as session:
-
-                # Создаем и добавляем новое сообщение в базу данных
-                db_message = Message(
-                    message_id=message.id,
-                    message_date=message_date,
-                    message_text=message.text,
-                    channel_username=channel
-                )
-                session.add(db_message)
-                session.commit()
-        elif (channel, message.id) in existing_messages_set:
+        if (channel, message.id) not in existing_messages and message.text:
+            print(f'Добавлено сообщение в базу данных: {channel} {message.id}')
+            
+            # Подключение к базе данных для вставки нового сообщения
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO messages (message_id, message_date, message_text, channel_username)
+                VALUES (?, ?, ?, ?)
+            ''', (message.id, message_date.isoformat(), message.text, channel))
+            conn.commit()
+            conn.close()
+            
+            # Добавляем новое сообщение в существующий список, чтобы не вставлять его повторно
+            existing_messages.append((channel, message.id))
+        elif (channel, message.id) in existing_messages:
             print(f'Закончена парсинг канала {channel}')
             break
         time.sleep(0.1)
