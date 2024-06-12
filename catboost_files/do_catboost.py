@@ -1,6 +1,6 @@
 import pandas as pd
 from catboost import Pool, CatBoostClassifier
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 import numpy as np
 import matplotlib.pyplot as plt
@@ -42,90 +42,77 @@ labels = tags_df.to_numpy()
 texts = np.array(texts)
 labels = np.array(labels)
 
+# Разделение данных на тренировочную и тестовую выборки
+train_texts, test_texts, train_labels, test_labels = train_test_split(texts, labels, test_size=0.2, random_state=42)
+
 # Подготовка данных для модели
-categories = list(range(labels.shape[1]))
-dfs = [pd.DataFrame({"text": texts, "label": labels[:, i]}) for i in categories]
-dfs_split = [train_test_split(df.text, df["label"].astype(float), test_size=0.2, random_state=42) for df in dfs]
+train_pool = Pool(train_texts, label=train_labels, text_features=[0])
+test_pool = Pool(test_texts, label=test_labels, text_features=[0])
 
-# Функция для обучения модели CatBoost
-def fit_catboost(X_train, X_test, y_train, y_test, catboost_params={}, verbose=100):
-    learn_pool = Pool(
-        X_train,
-        y_train,
-        text_features=["text"]
-    )
-    test_pool = Pool(
-        X_test,
-        y_test,
-        text_features=["text"]
-    )
+# Задание сетки гиперпараметров для поиска
+param_grid = {
+    'iterations': [50, 100, 150],
+    'learning_rate': [0.01, 0.1, 0.3],
+    'depth': [4, 6, 8],
+    'l2_leaf_reg': [1, 3, 5],
+    'border_count': [32, 64, 128]
+}
 
-    catboost_default_params = {
-        'iterations': 50,
-        'learning_rate': 0.03,
-        'eval_metric': 'Accuracy',
-    }
+# Настройка и обучение модели CatBoost с GridSearchCV
+model = CatBoostClassifier(loss_function='MultiLogloss', eval_metric='Accuracy', verbose=0)
+grid_search = GridSearchCV(estimator=model, param_grid=param_grid, scoring='accuracy', cv=3, verbose=10, n_jobs=-1)
 
-    catboost_default_params.update(catboost_params)
+grid_search.fit(train_texts, train_labels)
 
-    model = CatBoostClassifier(**catboost_default_params)
-    model.fit(learn_pool, eval_set=test_pool, verbose=verbose)
+# Вывод лучших гиперпараметров и результатов
+print("Best Hyperparameters:", grid_search.best_params_)
+print("Best Cross-validation Accuracy:", grid_search.best_score_)
 
-    return model, test_pool, model.get_evals_result()
+# Обучение лучшей модели на тренировочном наборе и оценка на тестовом наборе
+best_model = grid_search.best_estimator_
+best_model.fit(train_pool, eval_set=test_pool, use_best_model=True)
 
-# Обучение моделей для каждой категории и расчет метрик
-overall_test_labels = []
-overall_predicted_labels = []
-histories = []
+# Сохранение лучшей модели
+model_save_path = os.path.join(os.path.dirname(__file__), 'best_catboost_model.cbm')
+best_model.save_model(model_save_path)
+print(f"Best model saved to {model_save_path}")
 
-model_save_path = os.path.join(os.path.dirname(__file__), 'models')
-if not os.path.exists(model_save_path):
-    os.makedirs(model_save_path)
+# Предсказание меток
+predicted_labels = best_model.predict(test_pool)
 
-for idx, df_split in enumerate(dfs_split):
-    model, test_pool, history = fit_catboost(pd.DataFrame(df_split[0]), pd.DataFrame(df_split[1]), pd.DataFrame(df_split[2]), pd.DataFrame(df_split[3]))
-    predicted_labels = model.predict(test_pool).astype(float)
-    overall_test_labels.append(df_split[3].values.astype(float))
-    overall_predicted_labels.append(predicted_labels)
-    histories.append(history)
-    
-    # Сохранение модели
-    model_file = os.path.join(model_save_path, f'catboost_model_category_{idx}.cbm')
-    model.save_model(model_file)
-    print(f"Model for category {idx} saved to {model_file}")
-
-overall_test_labels = np.concatenate(overall_test_labels)
-overall_predicted_labels = np.concatenate(overall_predicted_labels)
-
-# Конвертация меток в плоский вид для вычисления метрик
-overall_test_labels_flat = overall_test_labels.flatten()
-overall_predicted_labels_flat = overall_predicted_labels.flatten()
+# Преобразование предсказанных меток и истинных меток в формат numpy
+predicted_labels = np.array(predicted_labels)
+test_labels = np.array(test_labels)
 
 # Вычисление метрик
-report = classification_report(overall_test_labels_flat, (overall_predicted_labels_flat > 0.5).astype(int), target_names=["Not Relevant", "Relevant"], output_dict=True, zero_division=0)
+report = classification_report(test_labels, predicted_labels, output_dict=True, zero_division=0)
 print(f"Macro-averaged Precision: {report['macro avg']['precision']}")
 print(f"Macro-averaged Recall: {report['macro avg']['recall']}")
 print(f"Macro-averaged F1-score: {report['macro avg']['f1-score']}")
 
+# Определение уникальных меток в тестовой выборке
+unique_labels = np.unique(np.concatenate((test_labels.argmax(axis=1), predicted_labels.argmax(axis=1))))
+
 # Построение матрицы ошибок
-cm = confusion_matrix(overall_test_labels_flat, (overall_predicted_labels_flat > 0.5).astype(int))
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Not Relevant", "Relevant"])
+cm = confusion_matrix(test_labels.argmax(axis=1), predicted_labels.argmax(axis=1), labels=unique_labels)
+cm_labels = [f"Class {i}" for i in unique_labels]  # Используйте реальные метки, если они доступны
+
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=cm_labels)
 disp.plot()
 plt.show()
 
 # Графики потерь и точности
+evals_result = best_model.get_evals_result()
 plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
-for idx, history in enumerate(histories):
-    plt.plot(history['learn']['Accuracy'], label=f'Train Accuracy {idx}')
-    plt.plot(history['validation']['Accuracy'], label=f'Validation Accuracy {idx}')
+plt.plot(evals_result['learn']['Accuracy'], label='Train Accuracy')
+plt.plot(evals_result['validation']['Accuracy'], label='Validation Accuracy')
 plt.title('Accuracy')
 plt.legend()
 
 plt.subplot(1, 2, 2)
-for idx, history in enumerate(histories):
-    plt.plot(history['learn']['Logloss'], label=f'Train Loss {idx}')
-    plt.plot(history['validation']['Logloss'], label=f'Validation Loss {idx}')
+plt.plot(evals_result['learn']['MultiLogloss'], label='Train Loss')
+plt.plot(evals_result['validation']['MultiLogloss'], label='Validation Loss')
 plt.title('Loss')
 plt.legend()
 

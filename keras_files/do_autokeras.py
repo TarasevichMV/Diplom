@@ -1,12 +1,14 @@
 import os
 import pandas as pd
+import numpy as np
+import tensorflow as tf
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
-from sklearn.utils.class_weight import compute_class_weight
-import numpy as np
-import tensorflow as tf
-import autokeras as ak
+from tensorflow.keras.layers import TextVectorization, Embedding, GlobalAveragePooling1D, Dense, Dropout
+from tensorflow.keras.models import Sequential
+from keras_tuner import HyperParameters, RandomSearch
+from tensorflow.keras.callbacks import CSVLogger
 import sys
 
 # Добавление пути к проекту
@@ -19,14 +21,14 @@ from preprocessing.textPreprocessor import fasttext_lowercase_train_config, Text
 PREPROCESSOR = TextPreprocessor(fasttext_lowercase_train_config)
 
 # Чтение тегов
-file_path = os.path.join(os.path.dirname(__file__), '..', 'tags', 'tags.csv')
-file_path = os.path.abspath(file_path)
-tags_df = pd.read_csv(file_path, header=None)
+tags_file_path = os.path.join(os.path.dirname(__file__), '..', 'tags', 'tags.csv')
+tags_file_path = os.path.abspath(tags_file_path)
+tags_df = pd.read_csv(tags_file_path, header=None)
 
 # Чтение текстов
-file_path = os.path.join(os.path.dirname(__file__), '..', 'texts', 'texts.csv')
-file_path = os.path.abspath(file_path)
-texts_df = pd.read_csv(file_path, encoding='utf-8', header=None)
+texts_file_path = os.path.join(os.path.dirname(__file__), '..', 'texts', 'texts.csv')
+texts_file_path = os.path.abspath(texts_file_path)
+texts_df = pd.read_csv(texts_file_path, encoding='utf-8', header=None)
 
 # Проверка и удаление пустых строк
 texts_df.dropna(inplace=True)
@@ -53,19 +55,66 @@ labels = np.array(labels)
 # Разделение данных на тренировочную и тестовую выборки
 train_texts, test_texts, train_labels, test_labels = train_test_split(texts, labels, test_size=0.2, random_state=42)
 
-# Создание модели с помощью AutoKeras
-clf = ak.TextClassifier(overwrite=True, max_trials=1)
+# Установка гиперпараметров
+def build_model(hp):
+    max_tokens = hp.Int('max_tokens', min_value=5000, max_value=20000, step=5000)
+    embedding_dim = hp.Int('embedding_dim', min_value=16, max_value=128, step=16)
+    dropout_rate = hp.Float('dropout_rate', min_value=0.1, max_value=0.5, step=0.1)
 
-# Обучение модели
-history = clf.fit(train_texts, train_labels, epochs=20, validation_data=(test_texts, test_labels))
+    vectorize_layer = TextVectorization(max_tokens=max_tokens, output_mode='int', output_sequence_length=500)
+    vectorize_layer.adapt(train_texts)
+
+    model = Sequential([
+        vectorize_layer,
+        Embedding(input_dim=max_tokens, output_dim=embedding_dim),
+        GlobalAveragePooling1D(),
+        Dropout(rate=dropout_rate),
+        Dense(units=labels.shape[1], activation='sigmoid')
+    ])
+
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    return model
+
+# Поиск лучших гиперпараметров
+tuner = RandomSearch(
+    build_model,
+    objective='val_accuracy',
+    max_trials=50,
+    executions_per_trial=1,
+    directory='my_dir',
+    project_name='text_classification'
+)
+
+tuner.search_space_summary()
+
+# Добавление колбэка для записи метрик в файл
+csv_logger = CSVLogger('training_log.csv', append=True)
+
+# Запуск поиска
+tuner.search(train_texts, train_labels, epochs=50, validation_data=(test_texts, test_labels), batch_size=32, callbacks=[csv_logger])
+
+# Получение лучших гиперпараметров и модели
+best_hp = tuner.get_best_hyperparameters()[0]
+model = tuner.hypermodel.build(best_hp)
+
+# Печать лучших гиперпараметров
+print(f"Best max_tokens: {best_hp.get('max_tokens')}")
+print(f"Best embedding_dim: {best_hp.get('embedding_dim')}")
+print(f"Best dropout_rate: {best_hp.get('dropout_rate')}")
+
+# Количество эпох
+epochs = 100
+
+# Обучение лучшей модели
+history = model.fit(train_texts, train_labels, epochs=epochs, validation_data=(test_texts, test_labels), batch_size=32)
 
 # Оценка модели на тестовой выборке
-evaluation = clf.evaluate(test_texts, test_labels)
+evaluation = model.evaluate(test_texts, test_labels, batch_size=32)
 print(f"Test Accuracy: {evaluation[1]}")
 print(f"Test Loss: {evaluation[0]}")
 
 # Прогнозирование меток на тестовых данных
-predicted_labels = clf.predict(test_texts)
+predicted_labels = model.predict(test_texts)
 
 # Преобразование предсказанных меток в формат numpy
 predicted_labels = np.array(predicted_labels).squeeze()
@@ -105,3 +154,6 @@ plt.title('Accuracy')
 plt.legend()
 
 plt.show()
+
+# Сохранение модели
+model.save('best_text_classification_model.h5')

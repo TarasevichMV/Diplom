@@ -104,9 +104,9 @@ for index, row in df.iterrows():
         for col_idx, prob in enumerate(probabilities, start=7):  # Столбцы G (7) - AA (27)
             if prob > 0.49:
                 sheet.cell(row=current_row, column=col_idx).value = '+'
-        
+
         current_row += 1
-        
+
         # Обновление базы данных
         update_query = f"UPDATE messages SET analized = 1 WHERE id = {row['id']}"
         conn.execute(update_query)
