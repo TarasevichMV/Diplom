@@ -7,10 +7,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 from tensorflow.keras.layers import TextVectorization, Embedding, GlobalAveragePooling1D, Dense, Dropout
 from tensorflow.keras.models import Sequential
-from keras_tuner import HyperParameters, BayesianOptimization
+from keras_tuner import HyperParameters, RandomSearch
 from tensorflow.keras.callbacks import CSVLogger
 import sys
-import time
 
 # Добавление пути к проекту
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -77,13 +76,13 @@ def build_model(hp):
     return model
 
 # Поиск лучших гиперпараметров
-tuner = BayesianOptimization(
+tuner = RandomSearch(
     build_model,
     objective='val_accuracy',
     max_trials=50,
+    executions_per_trial=1,
     directory='my_dir',
-    project_name='text_classification',
-    overwrite=True  # добавлено чтобы избежать перезагрузки существующего проекта
+    project_name='text_classification'
 )
 
 tuner.search_space_summary()
@@ -92,22 +91,16 @@ tuner.search_space_summary()
 csv_logger = CSVLogger('training_log.csv', append=True)
 
 # Запуск поиска
-start_time = time.time()
-
 tuner.search(train_texts, train_labels, epochs=50, validation_data=(test_texts, test_labels), batch_size=32, callbacks=[csv_logger])
-
-end_time = time.time()
-elapsed_time = end_time - start_time
-print(f"Bayesian optimization completed in {elapsed_time:.2f} seconds.")
 
 # Получение лучших гиперпараметров и модели
 best_hp = tuner.get_best_hyperparameters()[0]
 model = tuner.hypermodel.build(best_hp)
 
 # Печать лучших гиперпараметров
-print(f"Best max_tokens: {best_hp.get('max_tokens')}")
-print(f"Best embedding_dim: {best_hp.get('embedding_dim')}")
-print(f"Best dropout_rate: {best_hp.get('dropout_rate')}")
+print(f"Лучшее значение max_tokens: {best_hp.get('max_tokens')}")
+print(f"Лучшее значение embedding_dim: {best_hp.get('embedding_dim')}")
+print(f"Лучшее значение dropout_rate: {best_hp.get('dropout_rate')}")
 
 # Количество эпох
 epochs = 100
@@ -117,8 +110,8 @@ history = model.fit(train_texts, train_labels, epochs=epochs, validation_data=(t
 
 # Оценка модели на тестовой выборке
 evaluation = model.evaluate(test_texts, test_labels, batch_size=32)
-print(f"Test Accuracy: {evaluation[1]}")
-print(f"Test Loss: {evaluation[0]}")
+print(f"Точность на тестовой выборке: {evaluation[1]}")
+print(f"Потери на тестовой выборке: {evaluation[0]}")
 
 # Прогнозирование меток на тестовых данных
 predicted_labels = model.predict(test_texts)
@@ -133,31 +126,32 @@ columns = ["Инвестиции", "Производство", "Операцио
            "Нефтегаз", "Энергетика", "Строительство", "Машиностроение",
            "Прочие"]
 report = classification_report(test_labels, (predicted_labels > 0.5).astype(int), target_names=columns, output_dict=True, zero_division=0)
-print(f"Macro-averaged Precision: {report['macro avg']['precision']}")
-print(f"Macro-averaged Recall: {report['macro avg']['recall']}")
-print(f"Macro-averaged F1-score: {report['macro avg']['f1-score']}")
+print(f"Макро-усредненная точность: {report['macro avg']['precision']}")
+print(f"Макро-усредненная полнота: {report['macro avg']['recall']}")
+print(f"Макро-усредненная F1-меря: {report['macro avg']['f1-score']}")
 
 # Корректировка количества меток для матрицы ошибок
 unique_labels = np.unique(np.concatenate((test_labels.argmax(axis=1), predicted_labels.argmax(axis=1))))
-cm_labels = [columns[i] for i in unique_labels]
+cm_labels = [str(i) for i in unique_labels]
 
 cm = confusion_matrix(test_labels.argmax(axis=1), predicted_labels.argmax(axis=1), labels=unique_labels)
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=cm_labels)
 disp.plot()
+plt.title('Матрица ошибок')
 plt.show()
 
 # Графики потерь и точности
 plt.figure(figsize=(12, 5))
 plt.subplot(1, 2, 1)
-plt.plot(history.history['loss'], label='Train Loss')
-plt.plot(history.history['val_loss'], label='Validation Loss')
-plt.title('Loss')
+plt.plot(history.history['loss'], label='Потери на обучении')
+plt.plot(history.history['val_loss'], label='Потери на валидации')
+plt.title('Потери')
 plt.legend()
 
 plt.subplot(1, 2, 2)
-plt.plot(history.history['accuracy'], label='Train Accuracy')
-plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
-plt.title('Accuracy')
+plt.plot(history.history['accuracy'], label='Точность на обучении')
+plt.plot(history.history['val_accuracy'], label='Точность на валидации')
+plt.title('Точность')
 plt.legend()
 
 plt.show()
