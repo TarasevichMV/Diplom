@@ -60,6 +60,7 @@ def build_model(hp):
     max_tokens = hp.Int('max_tokens', min_value=5000, max_value=20000, step=5000)
     embedding_dim = hp.Int('embedding_dim', min_value=16, max_value=128, step=16)
     dropout_rate = hp.Float('dropout_rate', min_value=0.1, max_value=0.5, step=0.1)
+    epochs = hp.Int('epochs', min_value=10, max_value=100, step=10)  # Добавляем гиперпараметр epochs
 
     vectorize_layer = TextVectorization(max_tokens=max_tokens, output_mode='int', output_sequence_length=500)
     vectorize_layer.adapt(train_texts)
@@ -98,16 +99,14 @@ tuner.search(train_texts, train_labels, epochs=50, validation_data=(test_texts, 
 best_hp = tuner.get_best_hyperparameters()[0]
 model = tuner.hypermodel.build(best_hp)
 
-# Печать лучших гиперпараметров
+# Печать всех лучших гиперпараметров
 print(f"Лучшее значение max_tokens: {best_hp.get('max_tokens')}")
 print(f"Лучшее значение embedding_dim: {best_hp.get('embedding_dim')}")
 print(f"Лучшее значение dropout_rate: {best_hp.get('dropout_rate')}")
-
-# Количество эпох
-epochs = 100
+print(f"Лучшее количество эпох: {best_hp.get('epochs')}")
 
 # Обучение лучшей модели
-history = model.fit(train_texts, train_labels, epochs=epochs, validation_data=(test_texts, test_labels), batch_size=32)
+history = model.fit(train_texts, train_labels, epochs=best_hp.get('epochs'), validation_data=(test_texts, test_labels), batch_size=32)
 
 # Оценка модели на тестовой выборке
 evaluation = model.evaluate(test_texts, test_labels, batch_size=32)
