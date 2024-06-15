@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay, precision_score, recall_score, f1_score
 from tensorflow.keras.layers import TextVectorization, Embedding, GlobalAveragePooling1D, Dense, Dropout
 from tensorflow.keras.models import Sequential
 from keras_tuner import HyperParameters, BayesianOptimization
@@ -91,10 +91,31 @@ tuner.search_space_summary()
 # Добавление колбэка для записи метрик в файл
 csv_logger = CSVLogger('training_log.csv', append=True)
 
+# Создание пользовательского колбэка для вычисления метрик
+class Metrics(tf.keras.callbacks.Callback):
+    def __init__(self, validation_data):
+        super().__init__()
+        self.validation_data = validation_data
+
+    def on_epoch_end(self, epoch, logs=None):
+        val_predict = (np.asarray(self.model.predict(self.validation_data[0]))).round()
+        val_targ = self.validation_data[1]
+
+        _val_f1 = f1_score(val_targ, val_predict, average='macro')
+        _val_precision = precision_score(val_targ, val_predict, average='macro')
+        _val_recall = recall_score(val_targ, val_predict, average='macro')
+
+        logs['val_f1'] = _val_f1
+        logs['val_precision'] = _val_precision
+        logs['val_recall'] = _val_recall
+
+        print(f" — val_f1: {_val_f1} — val_precision: {_val_precision} — val_recall: {_val_recall}")
+
 # Запуск поиска
 start_time = time.time()
 
-tuner.search(train_texts, train_labels, epochs=50, validation_data=(test_texts, test_labels), batch_size=32, callbacks=[csv_logger])
+metrics = Metrics(validation_data=(test_texts, test_labels))
+tuner.search(train_texts, train_labels, epochs=50, validation_data=(test_texts, test_labels), batch_size=32, callbacks=[csv_logger, metrics])
 
 end_time = time.time()
 elapsed_time = end_time - start_time
@@ -110,10 +131,10 @@ print(f"Лучшее значение embedding_dim: {best_hp.get('embedding_dim
 print(f"Лучшее значение dropout_rate: {best_hp.get('dropout_rate')}")
 
 # Количество эпох
-epochs = 100
+epochs = best_hp.get('epochs')
 
 # Обучение лучшей модели
-history = model.fit(train_texts, train_labels, epochs=epochs, validation_data=(test_texts, test_labels), batch_size=32)
+history = model.fit(train_texts, train_labels, epochs=epochs, validation_data=(test_texts, test_labels), batch_size=32, callbacks=[metrics])
 
 # Оценка модели на тестовой выборке
 evaluation = model.evaluate(test_texts, test_labels, batch_size=32)
@@ -128,9 +149,9 @@ predicted_labels = np.array(predicted_labels).squeeze()
 
 # Вычисление метрик
 report = classification_report(test_labels, (predicted_labels > 0.5).astype(int), output_dict=True, zero_division=0)
-print(f"Макро-усредненная точность: {report['macro avg']['precision']}")
-print(f"Макро-усредненная полнота: {report['macro avg']['recall']}")
-print(f"Макро-усредненная F1-меря: {report['macro avg']['f1-score']}")
+print(f"Macro-averaged Precision: {report['macro avg']['precision']}")
+print(f"Macro-averaged Recall: {report['macro avg']['recall']}")
+print(f"Macro-averaged F1-score: {report['macro avg']['f1-score']}")
 
 # Корректировка количества меток для матрицы ошибок
 unique_labels = np.unique(np.concatenate((test_labels.argmax(axis=1), predicted_labels.argmax(axis=1))))
@@ -142,18 +163,22 @@ disp.plot()
 plt.title('Матрица ошибок')
 plt.show()
 
-# Графики потерь и точности
-plt.figure(figsize=(12, 5))
-plt.subplot(1, 2, 1)
-plt.plot(history.history['loss'], label='Потери на обучении')
-plt.plot(history.history['val_loss'], label='Потери на валидации')
-plt.title('Потери')
+# Графики макро-усредненных метрик
+plt.figure(figsize=(18, 5))
+
+plt.subplot(1, 3, 1)
+plt.plot(history.history['val_precision'], label='Macro-averaged Precision на валидации')
+plt.title('Macro-averaged Precision')
 plt.legend()
 
-plt.subplot(1, 2, 2)
-plt.plot(history.history['accuracy'], label='Точность на обучении')
-plt.plot(history.history['val_accuracy'], label='Точность на валидации')
-plt.title('Точность')
+plt.subplot(1, 3, 2)
+plt.plot(history.history['val_recall'], label='Macro-averaged Recall на валидации')
+plt.title('Macro-averaged Recall')
+plt.legend()
+
+plt.subplot(1, 3, 3)
+plt.plot(history.history['val_f1'], label='Macro-averaged F1-score на валидации')
+plt.title('Macro-averaged F1-score')
 plt.legend()
 
 plt.show()
