@@ -114,37 +114,5 @@ print(f"Макро-усредненная точность: {report['macro avg']
 print(f"Макро-усредненная полнота: {report['macro avg']['recall']}")
 print(f"Макро-усредненная F1-меря: {report['macro avg']['f1-score']}")
 
-# Корректировка количества меток для матрицы ошибок
-unique_labels = np.unique(np.concatenate((test_labels.argmax(axis=1), predicted_labels.argmax(axis=1))))
-cm_labels = [str(i) for i in unique_labels]
-
-cm = confusion_matrix(test_labels.argmax(axis=1), predicted_labels.argmax(axis=1), labels=unique_labels)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=cm_labels)
-disp.plot()
-plt.title('Матрица ошибок')
-plt.show()
-
-# Графики метрик
-epochs = range(1, len(metrics_callback.precision) + 1)
-
-plt.figure(figsize=(15, 5))
-
-plt.subplot(1, 3, 1)
-plt.plot(epochs, metrics_callback.precision, label='Macro-averaged Precision')
-plt.title('Macro-averaged Precision')
-plt.legend()
-
-plt.subplot(1, 3, 2)
-plt.plot(epochs, metrics_callback.recall, label='Macro-averaged Recall')
-plt.title('Macro-averaged Recall')
-plt.legend()
-
-plt.subplot(1, 3, 3)
-plt.plot(epochs, metrics_callback.f1, label='Macro-averaged F1-score')
-plt.title('Macro-averaged F1-score')
-plt.legend()
-
-plt.show()
-
 # Сохранение модели
 auto_model.export_model().save('best_text_classification_model', save_format='tf')

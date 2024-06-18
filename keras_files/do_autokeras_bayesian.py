@@ -153,35 +153,5 @@ print(f"Macro-averaged Precision: {report['macro avg']['precision']}")
 print(f"Macro-averaged Recall: {report['macro avg']['recall']}")
 print(f"Macro-averaged F1-score: {report['macro avg']['f1-score']}")
 
-# Корректировка количества меток для матрицы ошибок
-unique_labels = np.unique(np.concatenate((test_labels.argmax(axis=1), predicted_labels.argmax(axis=1))))
-cm_labels = [str(i) for i in unique_labels]
-
-cm = confusion_matrix(test_labels.argmax(axis=1), predicted_labels.argmax(axis=1), labels=unique_labels)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=cm_labels)
-disp.plot()
-plt.title('Матрица ошибок')
-plt.show()
-
-# Графики макро-усредненных метрик
-plt.figure(figsize=(18, 5))
-
-plt.subplot(1, 3, 1)
-plt.plot(history.history['val_precision'], label='Macro-averaged Precision на валидации')
-plt.title('Macro-averaged Precision')
-plt.legend()
-
-plt.subplot(1, 3, 2)
-plt.plot(history.history['val_recall'], label='Macro-averaged Recall на валидации')
-plt.title('Macro-averaged Recall')
-plt.legend()
-
-plt.subplot(1, 3, 3)
-plt.plot(history.history['val_f1'], label='Macro-averaged F1-score на валидации')
-plt.title('Macro-averaged F1-score')
-plt.legend()
-
-plt.show()
-
 # Сохранение модели
 model.save('best_text_classification_model.h5')

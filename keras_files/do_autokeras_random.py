@@ -129,31 +129,5 @@ print(f"Макро-усредненная точность: {report['macro avg']
 print(f"Макро-усредненная полнота: {report['macro avg']['recall']}")
 print(f"Макро-усредненная F1-меря: {report['macro avg']['f1-score']}")
 
-# Корректировка количества меток для матрицы ошибок
-unique_labels = np.unique(np.concatenate((test_labels.argmax(axis=1), predicted_labels.argmax(axis=1))))
-cm_labels = [str(i) for i in unique_labels]
-
-cm = confusion_matrix(test_labels.argmax(axis=1), predicted_labels.argmax(axis=1), labels=unique_labels)
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=cm_labels)
-disp.plot()
-plt.title('Матрица ошибок')
-plt.show()
-
-# Графики потерь и точности
-plt.figure(figsize=(12, 5))
-plt.subplot(1, 2, 1)
-plt.plot(history.history['loss'], label='Потери на обучении')
-plt.plot(history.history['val_loss'], label='Потери на валидации')
-plt.title('Потери')
-plt.legend()
-
-plt.subplot(1, 2, 2)
-plt.plot(history.history['accuracy'], label='Точность на обучении')
-plt.plot(history.history['val_accuracy'], label='Точность на валидации')
-plt.title('Точность')
-plt.legend()
-
-plt.show()
-
 # Сохранение модели
 model.save('best_text_classification_model.h5')
