@@ -1,9 +1,10 @@
-from telethon import TelegramClient
 import os
-from dotenv import load_dotenv
+import time
 import sqlite3
 from pytz import timezone
-import time
+from dotenv import load_dotenv
+from telethon import TelegramClient
+
 
 # Загрузка переменных среды
 load_dotenv()
@@ -67,7 +68,7 @@ for channel in companies_channels:
         message_date = message.date.astimezone(timezone)
         if (channel, message.id) not in existing_messages and message.text:
             print(f'Добавлено сообщение в базу данных: {channel} {message.id}')
-            
+
             # Подключение к базе данных для вставки нового сообщения
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
@@ -77,7 +78,7 @@ for channel in companies_channels:
             ''', (message.id, message_date.isoformat(), message.text, channel))
             conn.commit()
             conn.close()
-            
+
             # Добавляем новое сообщение в существующий список, чтобы не вставлять его повторно
             existing_messages.append((channel, message.id))
         elif (channel, message.id) in existing_messages:

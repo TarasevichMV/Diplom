@@ -1,10 +1,26 @@
+# Импорты для работы с базой данных
 import sqlite3
+
+# Импорты для работы с данными
 import pandas as pd
-from catboost import CatBoostClassifier, Pool
-from preprocessing.textPreprocessor import fasttext_lowercase_train_config, TextPreprocessor
+
+# Импорты для машинного обучения
+from tensorflow.keras.models import load_model
+
+# Импорты для предварительной обработки текста
+from preprocessing.textPreprocessor import (
+    fasttext_lowercase_train_config,
+    TextPreprocessor
+)
+
+# Импорты для работы с Excel
 from openpyxl import load_workbook
 from openpyxl.styles import NamedStyle
+
+# Импорты для работы с датой и временем
 from datetime import datetime
+
+# Импорты для работы с регулярными выражениями
 import re
 
 # Путь к базе данных
@@ -30,29 +46,32 @@ df = pd.read_sql_query(query, conn)
 # Инициализация препроцессора
 PREPROCESSOR = TextPreprocessor(fasttext_lowercase_train_config)
 
+
 # Предобработка сообщений
 def preprocess(text):
     return PREPROCESSOR.text_cleaning(text)
 
 df['processed_text'] = df['message_text'].apply(preprocess)
 
-# Загрузка моделей CatBoost
+# Загрузка моделей Keras
 models = []
 for i in range(21):
-    model_path = f'catboost_files/models/catboost_model_category_{i}.cbm'
-    model = CatBoostClassifier()
-    model.load_model(model_path)
+    model_path = f'keras_models/model_category_{i}.h5'
+    model = load_model(model_path)
     models.append(model)
+
 
 # Прогон через модели и получение вероятностей
 def get_probabilities(text):
     probabilities = []
-    data = pd.DataFrame([text], columns=['text'])
-    pool = Pool(data, text_features=['text'])  # Создаем Pool с текстовыми данными
     for model in models:
-        prob = model.predict_proba(pool)[0][1]  # Получаем вероятность положительного класса
+        # Подготовка данных для модели
+        data = pd.DataFrame([text], columns=['text'])
+        # Получение вероятностей от модели
+        prob = model.predict(data)[0][0]  # Получаем вероятность положительного класса
         probabilities.append(prob)
     return probabilities
+
 
 # Получение заголовка из первого предложения
 def extract_title(text):
@@ -77,10 +96,10 @@ if style_name not in wb.named_styles:
 # Итерация по текстам и обработка
 for index, row in df.iterrows():
     probabilities = get_probabilities(row['processed_text'])
-    
+
     # Запись данных, если есть хоть одна вероятность больше 0.49
     high_probabilities = [prob for prob in probabilities if prob > 0.51]
-    
+
     if high_probabilities:
         # Запись данных в xlsx
         title = extract_title(row['message_text'])
@@ -101,9 +120,9 @@ for index, row in df.iterrows():
         for col_idx, prob in enumerate(probabilities, start=7):  # Столбцы G (7) - AA (27)
             if prob > 0.49:
                 sheet.cell(row=current_row, column=col_idx).value = '+'
-        
+
         current_row += 1
-        
+
         # Обновление базы данных
         update_query = f"UPDATE messages SET analized = 1 WHERE id = {row['id']}"
         conn.execute(update_query)
