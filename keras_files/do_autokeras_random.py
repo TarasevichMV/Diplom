@@ -1,21 +1,39 @@
+# Основные импорты
 import os
+import sys
+
+# Импорты для работы с данными
 import pandas as pd
 import numpy as np
-import tensorflow as tf
-import matplotlib.pyplot as plt
+
+# Импорты для машинного обучения и оценки
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
-from tensorflow.keras.layers import TextVectorization, Embedding, GlobalAveragePooling1D, Dense, Dropout
+from sklearn.metrics import classification_report
+
+# Импорты для глубокого обучения
+from tensorflow.keras.layers import (
+    TextVectorization,
+    Embedding,
+    GlobalAveragePooling1D,
+    Dense,
+    Dropout
+)
 from tensorflow.keras.models import Sequential
-from keras_tuner import HyperParameters, RandomSearch
-from tensorflow.keras.callbacks import CSVLogger
-import sys
+
+# Импорты для гиперпараметрического поиска
+from keras_tuner import RandomSearch, Objective
+
+# Импорты для предварительной обработки текста
+from preprocessing.textPreprocessor import (
+    fasttext_lowercase_train_config,
+    TextPreprocessor
+)
+
 
 # Добавление пути к проекту
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_dir)
 
-from preprocessing.textPreprocessor import fasttext_lowercase_train_config, TextPreprocessor
 
 # Инициализация препроцессора
 PREPROCESSOR = TextPreprocessor(fasttext_lowercase_train_config)
@@ -55,12 +73,13 @@ labels = np.array(labels)
 # Разделение данных на тренировочную и тестовую выборки
 train_texts, test_texts, train_labels, test_labels = train_test_split(texts, labels, test_size=0.2, random_state=42)
 
+
 # Установка гиперпараметров
 def build_model(hp):
     max_tokens = hp.Int('max_tokens', min_value=5000, max_value=20000, step=5000)
     embedding_dim = hp.Int('embedding_dim', min_value=16, max_value=128, step=16)
     dropout_rate = hp.Float('dropout_rate', min_value=0.1, max_value=0.5, step=0.1)
-    epochs = hp.Int('epochs', min_value=10, max_value=100, step=10)  # Добавляем гиперпараметр epochs
+    epochs = hp.Int('epochs', min_value=10, max_value=100, step=10)
 
     vectorize_layer = TextVectorization(max_tokens=max_tokens, output_mode='int', output_sequence_length=500)
     vectorize_layer.adapt(train_texts)
@@ -73,13 +92,18 @@ def build_model(hp):
         Dense(units=labels.shape[1], activation='sigmoid')
     ])
 
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(
+        optimizer='adam',
+        loss='categorical_crossentropy',
+        metrics=['Precision_m', 'Recall_m', 'F1_m']
+        )
     return model
+
 
 # Поиск лучших гиперпараметров
 tuner = RandomSearch(
     build_model,
-    objective='val_accuracy',
+    objective=Objective('val_F1_m', 'max'),
     max_trials=50,
     executions_per_trial=1,
     directory='my_dir',
@@ -87,9 +111,6 @@ tuner = RandomSearch(
 )
 
 tuner.search_space_summary()
-
-# Добавление колбэка для записи метрик в файл
-csv_logger = CSVLogger('training_log.csv', append=True)
 
 # Запуск поиска
 tuner.search(train_texts, train_labels, epochs=50, validation_data=(test_texts, test_labels), batch_size=32, callbacks=[csv_logger])

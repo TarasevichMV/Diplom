@@ -88,8 +88,6 @@ tuner = BayesianOptimization(
 
 tuner.search_space_summary()
 
-# Добавление колбэка для записи метрик в файл
-csv_logger = CSVLogger('training_log.csv', append=True)
 
 # Создание пользовательского колбэка для вычисления метрик
 class Metrics(tf.keras.callbacks.Callback):
@@ -110,6 +108,7 @@ class Metrics(tf.keras.callbacks.Callback):
         logs['val_recall'] = _val_recall
 
         print(f" — val_f1: {_val_f1} — val_precision: {_val_precision} — val_recall: {_val_recall}")
+
 
 # Запуск поиска
 start_time = time.time()

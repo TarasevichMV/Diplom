@@ -1,19 +1,30 @@
+# Основные импорты
 import os
+import sys
+
+# Импорты для работы с данными
 import pandas as pd
 import numpy as np
-import tensorflow as tf
-import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay, precision_recall_fscore_support
-from tensorflow.keras.callbacks import CSVLogger, Callback
+
+# Импорты для машинного обучения и глубокого обучения
 import autokeras as ak
-import sys
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    classification_report,
+    precision_recall_fscore_support
+)
+from tensorflow.keras.callbacks import CSVLogger, Callback
+
+# Импорты для предварительной обработки текста
+from preprocessing.textPreprocessor import (
+    fasttext_lowercase_train_config,
+    TextPreprocessor
+)
+
 
 # Добавление пути к проекту
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_dir)
-
-from preprocessing.textPreprocessor import fasttext_lowercase_train_config, TextPreprocessor
 
 # Инициализация препроцессора
 PREPROCESSOR = TextPreprocessor(fasttext_lowercase_train_config)
@@ -53,6 +64,7 @@ labels = np.array(labels)
 # Разделение данных на тренировочную и тестовую выборки
 train_texts, test_texts, train_labels, test_labels = train_test_split(texts, labels, test_size=0.2, random_state=42)
 
+
 class MetricsCallback(Callback):
     def __init__(self, validation_data):
         self.validation_data = validation_data
@@ -64,12 +76,13 @@ class MetricsCallback(Callback):
         val_texts, val_labels = self.validation_data
         val_predictions = self.model.predict(val_texts)
         val_predictions = (val_predictions > 0.5).astype(int)
-        
+
         precision, recall, f1, _ = precision_recall_fscore_support(val_labels, val_predictions, average='macro', zero_division=0)
-        
+
         self.precision.append(precision)
         self.recall.append(recall)
         self.f1.append(f1)
+
 
 # Создание AutoKeras модели
 input_node = ak.TextInput()
@@ -81,7 +94,7 @@ output_node = ak.ClassificationHead(num_classes=labels.shape[1])(output_node)
 auto_model = ak.AutoModel(
     inputs=input_node,
     outputs=output_node,
-    max_trials=1,  # Установка в 1, так как мы не делаем тюнинг гиперпараметров
+    max_trials=1,
     directory='my_dir',
     project_name='text_classification',
     overwrite=True
